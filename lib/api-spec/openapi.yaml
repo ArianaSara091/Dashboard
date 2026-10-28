@@ -3,18 +3,20 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Vampire Discord dashboard API
 servers:
   - url: /api
     description: Base API path
 tags:
-  - name: health
-    description: Health operations
+  - name: auth
+    description: Discord OAuth session operations
+  - name: guilds
+    description: Authorized Discord server management
 paths:
   /healthz:
     get:
       operationId: healthCheck
-      tags: [health]
+      tags: [auth]
       summary: Health check
       description: Returns server health status
       responses:
@@ -24,7 +26,180 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/me:
+    get:
+      operationId: getAuthSession
+      tags: [auth]
+      summary: Get the current signed-in user
+      responses:
+        "200":
+          description: Current session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the current session
+      responses:
+        "204":
+          description: Session ended
+        "401":
+          description: No active session
+  /guilds:
+    get:
+      operationId: listManagedGuilds
+      tags: [guilds]
+      summary: List servers the signed-in user can manage
+      responses:
+        "200":
+          description: Authorized Discord servers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildListResponse"
+        "401":
+          description: Sign-in required
+  /guilds/{guildId}:
+    get:
+      operationId: getGuildDashboard
+      tags: [guilds]
+      summary: Get the authorized server dashboard
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: Server and dashboard configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildDashboard"
+        "403":
+          description: Current user cannot manage this server
+        "404":
+          description: Server is unavailable
+  /guilds/{guildId}/staff/search:
+    post:
+      operationId: listGuildStaff
+      tags: [guilds]
+      summary: List server staff from the configured data integration
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffSearchInput"
+      responses:
+        "200":
+          description: Staff list or an honest unavailable state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffListResponse"
+  /guilds/{guildId}/staff/{userId}:
+    put:
+      operationId: updateGuildStaff
+      tags: [guilds]
+      summary: Change staff access through the configured integration
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[0-9]{17,20}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffMutationInput"
+      responses:
+        "200":
+          description: Staff access updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMutationResponse"
+        "403":
+          description: Current user cannot manage this server
+        "503":
+          description: Activity integration is not configured
+  /guilds/{guildId}/reports/query:
+    post:
+      operationId: getGuildReports
+      tags: [guilds]
+      summary: Get real staff activity for a server and date range
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportQueryInput"
+      responses:
+        "200":
+          description: Report data or an honest unavailable state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponse"
+        "400":
+          description: Invalid or excessive date range
+        "403":
+          description: Current user cannot manage this server
+  /guilds/{guildId}/settings:
+    get:
+      operationId: getGuildSettings
+      tags: [guilds]
+      summary: Get server-scoped dashboard settings
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      responses:
+        "200":
+          description: Server settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildSettings"
+        "403":
+          description: Current user cannot manage this server
+    patch:
+      operationId: updateGuildSettings
+      tags: [guilds]
+      summary: Update server-scoped dashboard settings
+      parameters:
+        - $ref: "#/components/parameters/GuildId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuildSettingsInput"
+      responses:
+        "200":
+          description: Updated server settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildSettings"
+        "403":
+          description: Current user cannot manage this server
 components:
+  parameters:
+    GuildId:
+      name: guildId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9]{17,20}$"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +208,203 @@ components:
           type: string
       required:
         - status
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+      required: [id, username, displayName, avatarUrl]
+    AuthSession:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/UserProfile"
+            - type: "null"
+        csrfToken:
+          type: ["string", "null"]
+      required: [authenticated, user, csrfToken]
+    Guild:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        iconUrl:
+          type: ["string", "null"]
+        permissionLabel:
+          type: string
+          enum: [Owner, Administrator, "Manage Server"]
+        botStatus:
+          type: string
+          enum: [installed, not_installed, unknown]
+        inviteUrl:
+          type: ["string", "null"]
+      required: [id, name, iconUrl, permissionLabel, botStatus, inviteUrl]
+    GuildListResponse:
+      type: object
+      properties:
+        guilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Guild"
+        integrationConfigured:
+          type: boolean
+      required: [guilds, integrationConfigured]
+    GuildSettings:
+      type: object
+      properties:
+        guildId:
+          type: string
+        staffRoleId:
+          type: ["string", "null"]
+        timezone:
+          type: string
+        reportRangeDays:
+          type: integer
+          enum: [7, 14, 30]
+        updatedAt:
+          type: string
+          format: date-time
+      required: [guildId, staffRoleId, timezone, reportRangeDays, updatedAt]
+    GuildSettingsInput:
+      type: object
+      properties:
+        staffRoleId:
+          type: ["string", "null"]
+          pattern: "^[0-9]{17,20}$"
+        timezone:
+          type: string
+          maxLength: 80
+        reportRangeDays:
+          type: integer
+          enum: [7, 14, 30]
+      required: [staffRoleId, timezone, reportRangeDays]
+    GuildDashboard:
+      type: object
+      properties:
+        guild:
+          $ref: "#/components/schemas/Guild"
+        settings:
+          $ref: "#/components/schemas/GuildSettings"
+        integrationAvailable:
+          type: boolean
+        integrationMessage:
+          type: string
+      required: [guild, settings, integrationAvailable, integrationMessage]
+    StaffMember:
+      type: object
+      properties:
+        discordUserId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        roleLabel:
+          type: string
+        messages:
+          type: integer
+        timeouts:
+          type: integer
+        bans:
+          type: integer
+        claims:
+          type: integer
+      required:
+        [discordUserId, username, displayName, avatarUrl, roleLabel, messages, timeouts, bans, claims]
+    StaffListResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        message:
+          type: string
+        staff:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffMember"
+      required: [available, message, staff]
+    StaffMutationInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [grant, revoke]
+      required: [action]
+    StaffSearchInput:
+      type: object
+      properties:
+        search:
+          type: string
+          maxLength: 80
+      required: [search]
+    ReportQueryInput:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        sort:
+          type: string
+          enum: [messages, timeouts, bans, claims]
+      required: [from, to, sort]
+    StaffMutationResponse:
+      type: object
+      properties:
+        updated:
+          type: boolean
+        message:
+          type: string
+      required: [updated, message]
+    ReportTotals:
+      type: object
+      properties:
+        messages:
+          type: integer
+        mutes:
+          type: integer
+        timeouts:
+          type: integer
+        bans:
+          type: integer
+        claims:
+          type: integer
+      required: [messages, mutes, timeouts, bans, claims]
+    ReportResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        message:
+          type: string
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        totals:
+          oneOf:
+            - $ref: "#/components/schemas/ReportTotals"
+            - type: "null"
+        staff:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffMember"
+      required: [available, message, from, to, totals, staff]
 

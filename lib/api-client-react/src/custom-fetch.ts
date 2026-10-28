@@ -349,6 +349,23 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
+  if (
+    typeof document !== "undefined" &&
+    !["GET", "HEAD", "OPTIONS"].includes(method) &&
+    !headers.has("x-csrf-token")
+  ) {
+    const csrfCookie = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("vampire_csrf="));
+    if (csrfCookie) {
+      headers.set(
+        "x-csrf-token",
+        decodeURIComponent(csrfCookie.slice("vampire_csrf=".length)),
+      );
+    }
+  }
+
   // Attach bearer token when an auth getter is configured and no
   // Authorization header has been explicitly provided.
   if (_authTokenGetter && !headers.has("authorization")) {
@@ -360,7 +377,12 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetch(input, {
+    ...init,
+    method,
+    headers,
+    credentials: init.credentials ?? "same-origin",
+  });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

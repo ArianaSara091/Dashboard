@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Vampire Dashboard"
+description = "A responsive Discord-connected dashboard for managing Vampire across servers a user owns or can manage, with staff reports and server settings."
+version = "1.0.0"
+id = "artifacts/vampire-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24966
+
+[services.development]
+run = "pnpm --filter @workspace/vampire-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vampire-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/vampire-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24966"
+BASE_PATH = "/"
